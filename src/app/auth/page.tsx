@@ -3,17 +3,49 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Mail, Lock, User, ArrowRight } from "lucide-react";
+import { signIn, signUp } from "@/lib/supabase-auth";
+import { useRouter } from "next/navigation";
 
 export default function AuthPage() {
+  const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulação de autenticação
-    window.location.href = "/dashboard";
+    setLoading(true);
+    setError("");
+
+    try {
+      if (isLogin) {
+        // Login
+        const data = await signIn({ email, password });
+        if (data.session) {
+          router.push("/dashboard");
+        }
+      } else {
+        // Cadastro
+        const data = await signUp({
+          email,
+          password,
+          full_name: name,
+        });
+        if (data.session) {
+          router.push("/dashboard");
+        } else {
+          // Se não houver sessão imediata, pode ser que precise confirmar email
+          setError("Verifique seu email para confirmar o cadastro.");
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao autenticar");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -86,6 +118,12 @@ export default function AuthPage() {
               </div>
             </div>
 
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                {error}
+              </div>
+            )}
+
             {isLogin && (
               <div className="flex items-center justify-between text-sm">
                 <label className="flex items-center space-x-2 cursor-pointer">
@@ -100,10 +138,11 @@ export default function AuthPage() {
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-xl font-bold hover:shadow-lg hover:scale-105 transition-all duration-300 flex items-center justify-center space-x-2"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 rounded-xl font-bold hover:shadow-lg hover:scale-105 transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>{isLogin ? "Entrar" : "Criar conta"}</span>
-              <ArrowRight className="w-5 h-5" />
+              <span>{loading ? "Carregando..." : isLogin ? "Entrar" : "Criar conta"}</span>
+              {!loading && <ArrowRight className="w-5 h-5" />}
             </button>
           </form>
 

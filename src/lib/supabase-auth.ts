@@ -1,101 +1,158 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+type SignUpInput = {
+  email: string;
+  password: string;
+  full_name?: string;
+  username?: string;
+};
+
+type SignInInput = {
+  email: string;
+  password: string;
+};
+
+type ProfileUpdate = {
+  full_name?: string;
+  username?: string;
+  phone?: string;
+};
+
+type AddressInput = {
+  label?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+  country?: string;
+};
+
+// ---------------------------
+// 1) Inicialização do client
+// ---------------------------
+const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase environment variables");
+  throw new Error(
+    "Supabase env vars not found. Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
-export async function signUp({ 
-  email, 
-  password, 
-  full_name, 
-  username 
-}: { 
-  email: string; 
-  password: string; 
-  full_name?: string; 
-  username?: string;
-}) {
+// ---------------------------
+// 2) Helpers
+// ---------------------------
+async function requireUser() {
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
+  const user = userData?.user;
+  if (!user) throw new Error("Usuário não autenticado.");
+  return user;
+}
+
+// Optional: check email confirmed (uncomment where needed)
+// function isEmailConfirmed(user) {
+//   return !!user?.email_confirmed_at;
+// }
+
+// ---------------------------
+// 3) Auth: signup / signin / signout
+// ---------------------------
+export async function signUp(input: SignUpInput) {
+  // Nota: se sua instância exige confirmação de email, data.session pode ser null até o usuário confirmar.
   const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
+    email: input.email,
+    password: input.password,
   });
 
   if (error) throw error;
 
-  if (data.user) {
-    // Atualiza o profile criado pela trigger
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({
-        full_name,
-        username
-      })
-      .eq("id", data.user.id);
-
-    if (updateError) {
-      console.error("Error updating profile:", updateError);
+  // Se houver sessão (ou user) imediata, podemos tentar upsert no profile.
+  // Mas só faça upsert com sessão válida (data.session existindo) para evitar inconsistências.
+  if (data?.user && data?.session) {
+    try {
+      await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: data.user.id,
+            email: data.user.email ?? input.email,
+            full_name: input.full_name ?? null,
+            username: input.username ?? null,
+          },
+          { onConflict: "id" }
+        );
+    } catch (upsertErr) {
+      // não interromper o signup por causa de um upsert — logamos o erro
+      // frontend pode chamar updateMyProfile posteriormente
+      // eslint-disable-next-line no-console
+      console.error("Profile upsert after signUp failed:", upsertErr);
     }
   }
 
-  return data.user;
+  return data; // contém user e possivelmente session (frontend deve checar)
 }
 
-export async function signIn({ 
-  email, 
-  password 
-}: { 
-  email: string; 
-  password: string;
-}) {
+export async function signIn(input: SignInInput) {
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
+    email: input.email,
+    password: input.password,
   });
-  
-  if (error) throw error;
-  return data.user;
+
+  if (error) {
+    // Retornar mensagem genérica para UX (frontend pode traduzir)
+    throw new Error("E-mail ou senha inválidos.");
+  }
+
+  // data contains { user, session }
+  return data;
 }
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
+  return true;
+}
+
+// ---------------------------
+// 4) Profile helpers
+// ---------------------------
+export async function getCurrentUser() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  return data.user ?? null;
 }
 
 export async function getMyProfile() {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
+  const user = userData?.user;
   if (!user) return null;
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  // opcional: bloquear se email não confirmado
+  // if (!isEmailConfirmed(user)) throw new Error('Confirme seu e-mail antes de usar o app.');
 
-  if (error) {
-    console.error("Error fetching profile:", error);
-    return null;
-  }
-
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+  if (error) throw error;
   return data;
 }
 
-export async function updateMyProfile(updates: {
-  full_name?: string;
-  username?: string;
-  phone?: string;
-}) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+export async function upsertMyProfile(updates: ProfileUpdate) {
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
+  const user = userData?.user;
+  if (!user) throw new Error("Usuário não autenticado.");
+
+  const payload = { id: user.id, ...updates };
 
   const { data, error } = await supabase
     .from("profiles")
-    .update(updates)
-    .eq("id", user.id)
+    .upsert(payload, { onConflict: "id" })
     .select()
     .single();
 
@@ -103,65 +160,36 @@ export async function updateMyProfile(updates: {
   return data;
 }
 
+// ---------------------------
+// 5) Addresses (CRUD)
+// ---------------------------
 export async function getMyAddresses() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-
+  const user = await requireUser();
   const { data, error } = await supabase
     .from("addresses")
     .select("*")
     .eq("profile_id", user.id)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Error fetching addresses:", error);
-    return [];
-  }
-
-  return data || [];
+  if (error) throw error;
+  return data ?? [];
 }
 
-export async function createAddress(address: {
-  label?: string;
-  street?: string;
-  number?: string;
-  complement?: string;
-  neighborhood?: string;
-  city?: string;
-  state?: string;
-  zipcode?: string;
-  country?: string;
-}) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+export async function createAddress(address: AddressInput) {
+  const user = await requireUser();
 
-  const { data, error } = await supabase
-    .from("addresses")
-    .insert({
-      profile_id: user.id,
-      ...address
-    })
-    .select()
-    .single();
+  const payload = {
+    profile_id: user.id,
+    ...address,
+  };
 
+  const { data, error } = await supabase.from("addresses").insert(payload).select().single();
   if (error) throw error;
   return data;
 }
 
-export async function updateAddress(addressId: string, updates: {
-  label?: string;
-  street?: string;
-  number?: string;
-  complement?: string;
-  neighborhood?: string;
-  city?: string;
-  state?: string;
-  zipcode?: string;
-  country?: string;
-}) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
+export async function updateAddress(addressId: string, updates: AddressInput) {
+  const user = await requireUser();
   const { data, error } = await supabase
     .from("addresses")
     .update(updates)
@@ -169,20 +197,17 @@ export async function updateAddress(addressId: string, updates: {
     .eq("profile_id", user.id)
     .select()
     .single();
-
   if (error) throw error;
   return data;
 }
 
 export async function deleteAddress(addressId: string) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
+  const user = await requireUser();
   const { error } = await supabase
     .from("addresses")
     .delete()
     .eq("id", addressId)
     .eq("profile_id", user.id);
-
   if (error) throw error;
+  return true;
 }
