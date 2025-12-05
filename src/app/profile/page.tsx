@@ -37,7 +37,7 @@ export default function ProfilePage() {
         const profile = await getMyProfile();
         if (profile) {
           const profileData: UserData = {
-            name: profile.full_name || profile.username || "Usuário",
+            name: profile.name || "Usuário",
             email: profile.email || "",
             age: profile.age || 0,
             weight: profile.weight || 0,
@@ -64,8 +64,7 @@ export default function ProfilePage() {
     setSaving(true);
     try {
       await upsertMyProfile({
-        full_name: editData.name,
-        username: editData.name.toLowerCase().replace(/\s+/g, '_'),
+        name: editData.name,
         phone: undefined, // Adicione campo de telefone se necessário
       });
 
