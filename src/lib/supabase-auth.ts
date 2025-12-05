@@ -130,7 +130,11 @@ export async function getCurrentUser() {
 
 export async function getMyProfile() {
   const { data: userData, error: userErr } = await supabase.auth.getUser();
-  if (userErr) throw userErr;
+  if (userErr) {
+    console.log(userErr);
+    throw userErr;
+  }
+  console.log(userData);
   const user = userData?.user;
   if (!user) return null;
 
