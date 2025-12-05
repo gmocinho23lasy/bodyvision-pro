@@ -30,12 +30,10 @@ export default function DashboardPage() {
     async function loadProfile() {
       try {
         const profile = await getMyProfile();
-        if (profile?.full_name) {
+        if (profile?.name) {
           // Pega apenas o primeiro nome
-          const firstName = profile.full_name.split(" ")[0];
+          const firstName = profile.name.split(" ")[0];
           setUserName(firstName);
-        } else if (profile?.username) {
-          setUserName(profile.username);
         }
       } catch (error) {
         console.error("Erro ao carregar perfil:", error);
