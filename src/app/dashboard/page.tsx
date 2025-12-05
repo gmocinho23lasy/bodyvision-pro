@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Camera, Utensils, Activity, TrendingUp, Dumbbell, Apple, Target, Users, User, Zap, Droplet, Flame, Award } from "lucide-react";
 import { useState, useEffect } from "react";
+import { getMyProfile } from "@/lib/supabase-auth";
 
 // Frases motivacionais que alternam diariamente
 const motivationalQuotes = [
@@ -16,13 +17,34 @@ const motivationalQuotes = [
 ];
 
 export default function DashboardPage() {
-  const [userName] = useState("Gustavo");
+  const [userName, setUserName] = useState("Usuário");
   const [currentQuote, setCurrentQuote] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Seleciona frase baseada no dia do ano
     const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
     setCurrentQuote(motivationalQuotes[dayOfYear % motivationalQuotes.length]);
+
+    // Buscar dados do perfil do usuário
+    async function loadProfile() {
+      try {
+        const profile = await getMyProfile();
+        if (profile?.full_name) {
+          // Pega apenas o primeiro nome
+          const firstName = profile.full_name.split(" ")[0];
+          setUserName(firstName);
+        } else if (profile?.username) {
+          setUserName(profile.username);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar perfil:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProfile();
   }, []);
 
   return (
@@ -35,7 +57,7 @@ export default function DashboardPage() {
               {/* Foto de Perfil */}
               <div className="relative">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-slate-900 font-bold text-lg ring-4 ring-yellow-400/20">
-                  {userName.charAt(0)}
+                  {loading ? "..." : userName.charAt(0).toUpperCase()}
                 </div>
                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-slate-800"></div>
               </div>
@@ -43,7 +65,7 @@ export default function DashboardPage() {
               {/* Saudação Dinâmica */}
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-white">
-                  Olá, {userName}! 👋
+                  {loading ? "Carregando..." : `Olá, ${userName}! 👋`}
                 </h1>
                 <p className="text-sm text-slate-400">Pronto para evoluir hoje?</p>
               </div>

@@ -1,14 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Activity, Camera, TrendingUp, Utensils, User, LogOut, Menu, X, LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getCurrentUser, signOut } from "@/lib/supabase-auth";
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const isDashboard = pathname?.startsWith("/dashboard");
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const user = await getCurrentUser();
+        setIsAuthenticated(!!user);
+      } catch (error) {
+        setIsAuthenticated(false);
+      }
+    }
+    checkAuth();
+  }, [pathname]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      router.push("/auth");
+    } catch (error) {
+      console.error("Erro ao fazer logout:", error);
+    }
+  };
 
   if (pathname === "/auth") return null;
 
@@ -27,7 +51,7 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          {isDashboard ? (
+          {isDashboard && isAuthenticated ? (
             <div className="hidden md:flex items-center space-x-1">
               <NavLink href="/dashboard" icon={Activity} active={pathname === "/dashboard"}>
                 Dashboard
@@ -47,7 +71,10 @@ export default function Navbar() {
               <Link href="/profile" className="ml-4 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                 <User className="w-5 h-5" />
               </Link>
-              <button className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+              <button 
+                onClick={handleLogout}
+                className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
                 <LogOut className="w-5 h-5" />
               </button>
             </div>
@@ -82,7 +109,7 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-gray-200 bg-white">
           <div className="px-4 py-3 space-y-1">
-            {isDashboard ? (
+            {isDashboard && isAuthenticated ? (
               <>
                 <MobileNavLink href="/dashboard" icon={Activity}>Dashboard</MobileNavLink>
                 <MobileNavLink href="/dashboard/body-analysis" icon={Camera}>Análise Corporal</MobileNavLink>
@@ -91,7 +118,13 @@ export default function Navbar() {
                 <MobileNavLink href="/dashboard/progress" icon={TrendingUp}>Evolução</MobileNavLink>
                 <div className="pt-3 border-t border-gray-200 mt-3 space-y-1">
                   <MobileNavLink href="/profile" icon={User}>Perfil</MobileNavLink>
-                  <MobileNavLink href="/auth" icon={LogOut}>Sair</MobileNavLink>
+                  <button 
+                    onClick={handleLogout}
+                    className="flex items-center space-x-3 px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-lg w-full text-left"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    <span className="font-medium">Sair</span>
+                  </button>
                 </div>
               </>
             ) : (

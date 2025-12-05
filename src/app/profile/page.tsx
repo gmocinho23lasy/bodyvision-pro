@@ -1,32 +1,100 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { User, Mail, Calendar, Weight, Ruler, Target, Save, ArrowLeft, Camera } from "lucide-react";
 import Link from "next/link";
+import { getMyProfile, upsertMyProfile } from "@/lib/supabase-auth";
+
+interface UserData {
+  name: string;
+  email: string;
+  age: number;
+  weight: number;
+  height: number;
+  goal: string;
+  memberSince: string;
+}
 
 export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
-  const [userData, setUserData] = useState({
-    name: "João Silva",
-    email: "joao.silva@email.com",
-    age: 28,
-    weight: 82.5,
-    height: 1.78,
-    goal: "Perder peso e ganhar massa muscular",
-    memberSince: "Janeiro 2025",
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [userData, setUserData] = useState<UserData>({
+    name: "",
+    email: "",
+    age: 0,
+    weight: 0,
+    height: 0,
+    goal: "",
+    memberSince: "",
   });
 
-  const [editData, setEditData] = useState({ ...userData });
+  const [editData, setEditData] = useState<UserData>({ ...userData });
 
-  const handleSave = () => {
-    setUserData({ ...editData });
-    setIsEditing(false);
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const profile = await getMyProfile();
+        if (profile) {
+          const profileData: UserData = {
+            name: profile.full_name || profile.username || "Usuário",
+            email: profile.email || "",
+            age: profile.age || 0,
+            weight: profile.weight || 0,
+            height: profile.height || 0,
+            goal: profile.goal || "",
+            memberSince: profile.created_at 
+              ? new Date(profile.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+              : "Recente",
+          };
+          setUserData(profileData);
+          setEditData(profileData);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar perfil:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProfile();
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await upsertMyProfile({
+        full_name: editData.name,
+        username: editData.name.toLowerCase().replace(/\s+/g, '_'),
+        phone: undefined, // Adicione campo de telefone se necessário
+      });
+
+      // Atualizar dados locais
+      setUserData({ ...editData });
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Erro ao salvar perfil:", error);
+      alert("Erro ao salvar perfil. Tente novamente.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
     setEditData({ ...userData });
     setIsEditing(false);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Carregando perfil...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4 sm:px-6 lg:px-8">
@@ -51,7 +119,9 @@ export default function ProfilePage() {
             <div className="absolute -bottom-16 left-8">
               <div className="w-32 h-32 bg-white rounded-full border-4 border-white shadow-lg flex items-center justify-center">
                 <div className="w-28 h-28 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center">
-                  <User className="w-16 h-16 text-white" />
+                  <span className="text-white text-4xl font-bold">
+                    {userData.name.charAt(0).toUpperCase()}
+                  </span>
                 </div>
               </div>
               <button className="absolute bottom-0 right-0 bg-white p-2 rounded-full shadow-lg hover:shadow-xl transition-shadow">
@@ -78,16 +148,18 @@ export default function ProfilePage() {
                 <div className="flex space-x-3">
                   <button
                     onClick={handleCancel}
-                    className="bg-gray-200 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                    disabled={saving}
+                    className="bg-gray-200 text-gray-700 px-6 py-3 rounded-xl font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={handleSave}
-                    className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300 flex items-center space-x-2"
+                    disabled={saving}
+                    className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300 flex items-center space-x-2 disabled:opacity-50"
                   >
                     <Save className="w-5 h-5" />
-                    <span>Salvar</span>
+                    <span>{saving ? "Salvando..." : "Salvar"}</span>
                   </button>
                 </div>
               )}
@@ -124,18 +196,10 @@ export default function ProfilePage() {
                     <Mail className="w-4 h-4" />
                     <span>E-mail</span>
                   </label>
-                  {isEditing ? (
-                    <input
-                      type="email"
-                      value={editData.email}
-                      onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    />
-                  ) : (
-                    <div className="px-4 py-3 bg-gray-50 rounded-xl text-gray-900 font-medium">
-                      {userData.email}
-                    </div>
-                  )}
+                  <div className="px-4 py-3 bg-gray-50 rounded-xl text-gray-900 font-medium">
+                    {userData.email}
+                  </div>
+                  <p className="text-xs text-gray-500">O e-mail não pode ser alterado</p>
                 </div>
 
                 {/* Age */}
@@ -148,12 +212,12 @@ export default function ProfilePage() {
                     <input
                       type="number"
                       value={editData.age}
-                      onChange={(e) => setEditData({ ...editData, age: parseInt(e.target.value) })}
+                      onChange={(e) => setEditData({ ...editData, age: parseInt(e.target.value) || 0 })}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     />
                   ) : (
                     <div className="px-4 py-3 bg-gray-50 rounded-xl text-gray-900 font-medium">
-                      {userData.age} anos
+                      {userData.age > 0 ? `${userData.age} anos` : "Não informado"}
                     </div>
                   )}
                 </div>
@@ -169,12 +233,12 @@ export default function ProfilePage() {
                       type="number"
                       step="0.1"
                       value={editData.weight}
-                      onChange={(e) => setEditData({ ...editData, weight: parseFloat(e.target.value) })}
+                      onChange={(e) => setEditData({ ...editData, weight: parseFloat(e.target.value) || 0 })}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     />
                   ) : (
                     <div className="px-4 py-3 bg-gray-50 rounded-xl text-gray-900 font-medium">
-                      {userData.weight} kg
+                      {userData.weight > 0 ? `${userData.weight} kg` : "Não informado"}
                     </div>
                   )}
                 </div>
@@ -190,12 +254,12 @@ export default function ProfilePage() {
                       type="number"
                       step="0.01"
                       value={editData.height}
-                      onChange={(e) => setEditData({ ...editData, height: parseFloat(e.target.value) })}
+                      onChange={(e) => setEditData({ ...editData, height: parseFloat(e.target.value) || 0 })}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     />
                   ) : (
                     <div className="px-4 py-3 bg-gray-50 rounded-xl text-gray-900 font-medium">
-                      {userData.height} m
+                      {userData.height > 0 ? `${userData.height} m` : "Não informado"}
                     </div>
                   )}
                 </div>
@@ -215,7 +279,7 @@ export default function ProfilePage() {
                     />
                   ) : (
                     <div className="px-4 py-3 bg-gray-50 rounded-xl text-gray-900 font-medium">
-                      {userData.goal}
+                      {userData.goal || "Nenhum objetivo definido"}
                     </div>
                   )}
                 </div>
@@ -226,12 +290,16 @@ export default function ProfilePage() {
             <div className="mt-8 grid md:grid-cols-3 gap-6">
               <StatCard
                 label="IMC"
-                value={(userData.weight / (userData.height * userData.height)).toFixed(1)}
+                value={userData.weight > 0 && userData.height > 0 
+                  ? (userData.weight / (userData.height * userData.height)).toFixed(1)
+                  : "N/A"}
                 gradient="from-blue-500 to-cyan-500"
               />
               <StatCard
                 label="Peso Ideal"
-                value={`${(22 * userData.height * userData.height).toFixed(1)} kg`}
+                value={userData.height > 0 
+                  ? `${(22 * userData.height * userData.height).toFixed(1)} kg`
+                  : "N/A"}
                 gradient="from-purple-500 to-pink-500"
               />
               <StatCard

@@ -33,8 +33,8 @@ type AddressInput = {
 // ---------------------------
 // 1) Inicialização do client
 // ---------------------------
-const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
